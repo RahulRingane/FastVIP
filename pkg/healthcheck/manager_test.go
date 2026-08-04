@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/config"
 	"go.uber.org/zap"
 )
 

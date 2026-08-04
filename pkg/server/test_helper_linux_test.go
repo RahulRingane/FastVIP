@@ -5,7 +5,7 @@ package server
 import (
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 	"go.uber.org/zap"
 )
 

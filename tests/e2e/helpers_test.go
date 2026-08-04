@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 )
 
 // runEzlbOnce executes `fastVIP once -c configPath` and asserts a successful exit.

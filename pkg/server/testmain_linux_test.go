@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 )
 
 func TestMain(m *testing.M) {

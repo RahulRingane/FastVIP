@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/config"
 )
 
 // ServiceKey uniquely identifies an IPVS virtual service.
