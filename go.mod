@@ -1,4 +1,4 @@
-module github.com/fastVIP
+module github.com/fastVIP/fastVIP
 
 go 1.25.6
 
