@@ -1,6 +1,6 @@
 # Project information
 PROJECT_NAME := fastVIP
-MODULE_NAME := github.com/fastVIP/fastVIP
+MODULE_NAME := github.com/RahulRingane/FastVIP
 BUILD_TIME := $(shell date +%Y-%m-%d\ %H:%M:%S)
 BUILD_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 #BUILD_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")

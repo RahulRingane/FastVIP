@@ -3,7 +3,7 @@ package trafficlog
 import (
 	"fmt"
 
-	"github.com/fastVIP/fastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 )
 
 // lvsStatsAdapter implements LVSStatsProvider by adapting lvs.Manager.

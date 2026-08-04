@@ -5,7 +5,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/config"
 )
 
 // --- Protocol conversion tests ---

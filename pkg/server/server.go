@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fastVIP/fastVIP/pkg/admin"
-	"github.com/fastVIP/fastVIP/pkg/config"
-	"github.com/fastVIP/fastVIP/pkg/healthcheck"
-	"github.com/fastVIP/fastVIP/pkg/lvs"
-	"github.com/fastVIP/fastVIP/pkg/metrics"
-	"github.com/fastVIP/fastVIP/pkg/snat"
-	"github.com/fastVIP/fastVIP/pkg/trafficlog"
+	"github.com/RahulRingane/FastVIP/pkg/admin"
+	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/healthcheck"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/metrics"
+	"github.com/RahulRingane/FastVIP/pkg/snat"
+	"github.com/RahulRingane/FastVIP/pkg/trafficlog"
 	"go.uber.org/zap"
 )
 

@@ -3,7 +3,7 @@ package logutil
 import (
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

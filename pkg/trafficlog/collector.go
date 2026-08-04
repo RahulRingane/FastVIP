@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
-	"github.com/fastVIP/fastVIP/pkg/logutil"
-	"github.com/fastVIP/fastVIP/pkg/metrics"
+	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/logutil"
+	"github.com/RahulRingane/FastVIP/pkg/metrics"
 	"go.uber.org/zap"
 )
 

@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
-	"github.com/fastVIP/fastVIP/pkg/logutil"
-	"github.com/fastVIP/fastVIP/pkg/server"
+	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/logutil"
+	"github.com/RahulRingane/FastVIP/pkg/server"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"

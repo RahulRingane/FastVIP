@@ -5,8 +5,8 @@ package lvs
 import (
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/config"
-	"github.com/fastVIP/fastVIP/pkg/snat"
+	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/RahulRingane/FastVIP/pkg/snat"
 )
 
 func TestReconcile_FullNATGeneratesSNATRules(t *testing.T) {

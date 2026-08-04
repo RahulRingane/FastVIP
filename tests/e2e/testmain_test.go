@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fastVIP/fastVIP/pkg/lvs"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 )
 
 // fastVIPBinary holds the path to the compiled fastVIP binary used by all e2e tests.
@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 
 	// Compile the binary from the project root
 	// The test runs from tests/e2e/, so the module root is two levels up
-	buildCmd := exec.Command("go", "build", "-tags", "integration", "-o", fastVIPBinary, "github.com/fastVIP/fastVIP/cmd/fastVIP")
+	buildCmd := exec.Command("go", "build", "-tags", "integration", "-o", fastVIPBinary, "github.com/RahulRingane/FastVIP/cmd/fastVIP")
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {
