@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.26'
+    - name: Install dependencies
+      run: go mod tidy
+    - name: Test
+      run: make test
+    # requires root privileges
+    #- name: Test E2E
+    #  run: make test-e2e

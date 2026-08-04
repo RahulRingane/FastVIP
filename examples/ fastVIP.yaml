@@ -1,0 +1,80 @@
+global:
+  admin_address: "127.0.0.1:9095"  # Admin HTTP server address for metrics and health checks (default: disabled)
+  cleanup_on_exit: true      # Remove managed IPVS services and EZLB-SNAT iptables chain on exit (default: true)
+  metrics_enabled: true      # Enable Prometheus metrics endpoint (default: true)
+  metrics_path: "/metrics"   # Metrics endpoint path (default: /metrics)
+  log:
+    level: info              # Log level: debug, info, warn, error (default: info)
+    home: ./logs             # Log directory (default: ./logs)
+    max_size: 50             # Max size per log file in MB (default: 50)
+    max_backups: 3           # Max number of old log files to retain (default: 3)
+    max_age: 0               # Max days to retain old log files, 0=no limit (default: 0)
+    compress: false          # Compress rotated log files (default: false)
+    traffic:
+      enabled: true          # Enable traffic collector (default: true)
+      interval: 20s          # Traffic stats collection interval, min 5s (default: 20s)
+
+services:
+  - name: web-service
+    listen: 10.0.0.1:80
+    protocol: tcp
+    scheduler: wrr
+    health_check:
+      enabled: true
+      interval: 5s
+      timeout: 3s
+      fail_count: 3
+      rise_count: 2
+    backends:
+      - address: 192.168.1.10:8080
+        weight: 5
+      - address: 192.168.1.11:8080
+        weight: 3
+      - address: 192.168.1.12:8080
+        weight: 2
+
+  - name: api-service
+    listen: 10.0.0.1:443
+    protocol: tcp
+    scheduler: wlc
+    health_check:
+      enabled: true
+      type: http
+      interval: 10s
+      timeout: 2s
+      fail_count: 3
+      rise_count: 2
+      http_path: /healthz
+      http_expected_status: 200
+    backends:
+      - address: 192.168.2.10:8443
+        weight: 1
+      - address: 192.168.2.11:8443
+        weight: 1
+
+  - name: internal-service
+    listen: 10.0.0.2:9090
+    protocol: tcp
+    scheduler: rr
+    health_check:
+      enabled: false
+    backends:
+      - address: 192.168.3.10:9090
+        weight: 1
+      - address: 192.168.3.11:9090
+        weight: 1
+
+  - name: dns-service
+    listen: 10.0.0.3:53
+    protocol: udp
+    scheduler: rr
+    full_nat: true           # Enable FullNAT (IPVS NAT + iptables SNAT)
+    snat_ip: 10.0.0.3        # Source IP for SNAT; omit for MASQUERADE
+    traffic_log: true          # Per-service traffic log: true to enable raw stats logging (default: disabled)
+    health_check:
+      enabled: false
+    backends:
+      - address: 192.168.4.10:53
+        weight: 1
+      - address: 192.168.4.11:53
+        weight: 1

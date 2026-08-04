@@ -1,0 +1,41 @@
+FROM golang:1.26
+
+ENV GOPROXY="https://goproxy.cn,direct"
+ENV LANG=C.UTF-8
+ENV TZ=Asia/Shanghai
+
+RUN set -eux; \
+    echo '' > /etc/apt/sources.list.d/debian.sources; \
+    echo 'deb http://mirrors.aliyun.com/debian/ bookworm main non-free non-free-firmware contrib' > /etc/apt/sources.list; \
+    echo 'deb http://mirrors.aliyun.com/debian-security/ bookworm-security main' >> /etc/apt/sources.list; \
+    echo 'deb http://mirrors.aliyun.com/debian/ bookworm-updates main non-free non-free-firmware contrib' >> /etc/apt/sources.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ipvsadm \
+        iptables \
+        kmod \
+        iproute2 \
+        tzdata \
+    ; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Cache dependencies first
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY cmd/ cmd/
+COPY pkg/ pkg/
+COPY tests/ tests/
+COPY Makefile Makefile
+
+# Entrypoint: load IPVS kernel modules inside the container (works on both
+# Linux hosts and macOS Docker Desktop, which runs a Linux VM with IPVS built-in),
+# then hand off to the test command.
+COPY tests/e2e/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["sh", "-c", "make test-linux && make test-e2e"]
