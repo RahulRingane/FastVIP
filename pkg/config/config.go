@@ -473,34 +473,49 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
+// Reload re-reads and validates the config file, replaces the current config,
+// and notifies listeners via the onChange channel. On validation failure the
+// previous config is kept and the error is returned to the caller.
+//
+// This is the single reload path, shared by the fsnotify watcher and the admin
+// API's POST /reload.
+func (m *Manager) Reload() error {
+	cfg, err := m.Load()
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.current = cfg
+	onReload := m.onReload
+	m.mu.Unlock()
+
+	// Increment config reload counter via callback if registered
+	if onReload != nil {
+		onReload()
+	}
+
+	// Non-blocking send to notify listeners
+	select {
+	case m.onChange <- struct{}{}:
+	default:
+	}
+
+	return nil
+}
+
 // WatchConfig starts watching the config file for changes.
 // On change, it reloads and validates; if valid, updates current config and notifies via onChange channel.
 func (m *Manager) WatchConfig() {
 	m.viper.OnConfigChange(func(event fsnotify.Event) {
 		m.logger.Info("config file changed", zap.String("file", event.Name))
 
-		cfg, err := m.Load()
-		if err != nil {
+		if err := m.Reload(); err != nil {
 			m.logger.Error("failed to reload config, keeping previous config", zap.Error(err))
 			return
 		}
 
-		m.mu.Lock()
-		m.current = cfg
-		m.mu.Unlock()
-
 		m.logger.Info("config reloaded successfully")
-
-		// Increment config reload counter via callback if registered
-		if m.onReload != nil {
-			m.onReload()
-		}
-
-		// Non-blocking send to notify listeners
-		select {
-		case m.onChange <- struct{}{}:
-		default:
-		}
 	})
 
 	m.viper.WatchConfig()

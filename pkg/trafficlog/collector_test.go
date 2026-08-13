@@ -6,10 +6,57 @@ import (
 	"time"
 
 	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+// gatherMetricValue scans the default Prometheus registry (which is what
+// pkg/metrics's promauto-registered collectors publish to) for a single
+// metric family/label-set combination and returns its counter/gauge value.
+// pkg/metrics keeps its underlying CounterVec/GaugeVec variables unexported,
+// so this is the only way for an external package's test to check the exact
+// value recorded for a specific label set.
+func gatherMetricValue(t *testing.T, name string, labels map[string]string) (float64, bool) {
+	t.Helper()
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, mf := range families {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			got := make(map[string]string, len(m.GetLabel()))
+			for _, lp := range m.GetLabel() {
+				got[lp.GetName()] = lp.GetValue()
+			}
+
+			matched := true
+			for k, v := range labels {
+				if got[k] != v {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+
+			if m.Counter != nil {
+				return m.Counter.GetValue(), true
+			}
+			if m.Gauge != nil {
+				return m.Gauge.GetValue(), true
+			}
+		}
+	}
+	return 0, false
+}
 
 // fakeLVSStatsProvider is a mock implementation of LVSStatsProvider for testing.
 type fakeLVSStatsProvider struct {
@@ -371,6 +418,283 @@ func TestCollector_StatsProviderError(t *testing.T) {
 	// Traffic logger should have no entries (no valid data)
 	if trafficLogs.Len() != 0 {
 		t.Errorf("expected 0 traffic log entries, got %d", trafficLogs.Len())
+	}
+}
+
+// TestCollector_UpdateMetrics_DeltaAcrossPolls verifies that updateMetrics
+// adds only the per-poll delta of the raw cumulative IPVS counters, not the
+// whole cumulative total every tick. Two consecutive polls with increasing
+// cumulative values should leave the Prometheus counter equal to the final
+// cumulative value, not the sum of two full cumulative totals.
+func TestCollector_UpdateMetrics_DeltaAcrossPolls(t *testing.T) {
+	services := []config.ServiceConfig{
+		newTestServiceConfig("delta-svc", "10.99.0.1:80", "tcp", "rr", nil),
+	}
+	c := NewCollector(&fakeLVSStatsProvider{}, zap.NewNop(), zap.NewNop(), services, newTestTrafficConfig(true, "15s"))
+
+	svcLabels := map[string]string{"service": "delta-svc", "listen": "10.99.0.1:80", "protocol": "tcp"}
+	backendLabels := map[string]string{"service": "delta-svc", "backend": "10.99.0.2:8080", "protocol": "tcp"}
+
+	// First poll: raw cumulative counters as IPVS would report them fresh.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.1:80/tcp": {Connections: 100, InBytes: 5000, OutBytes: 3000, InPkts: 50, OutPkts: 40},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.1:80/tcp->10.99.0.2:8080": {
+				ServiceKey: "10.99.0.1:80/tcp", Connections: 60, InBytes: 2800, OutBytes: 1700,
+			},
+		},
+	})
+
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 100 {
+		t.Fatalf("after first poll: expected service connections=100, got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_backend_connections_total", backendLabels); !ok || v != 60 {
+		t.Fatalf("after first poll: expected backend connections=60, got %v (found=%v)", v, ok)
+	}
+
+	// Second poll: cumulative counters advanced by 30/60 connections respectively.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.1:80/tcp": {Connections: 130, InBytes: 5500, OutBytes: 3300, InPkts: 55, OutPkts: 44},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.1:80/tcp->10.99.0.2:8080": {
+				ServiceKey: "10.99.0.1:80/tcp", Connections: 90, InBytes: 3100, OutBytes: 1900,
+			},
+		},
+	})
+
+	// The Prometheus counter must equal the latest raw cumulative value, i.e.
+	// only the delta (30 and 30) was added on the second poll, not another 130/90.
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 130 {
+		t.Fatalf("after second poll: expected service connections=130 (delta-only), got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_backend_connections_total", backendLabels); !ok || v != 90 {
+		t.Fatalf("after second poll: expected backend connections=90 (delta-only), got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_service_bytes_in_total", svcLabels); !ok || v != 5500 {
+		t.Fatalf("after second poll: expected service bytes_in=5500 (delta-only), got %v (found=%v)", v, ok)
+	}
+}
+
+// TestCollector_UpdateMetrics_CounterReset verifies the IPVS counter-reset
+// case: when a service/destination is recreated by a reconcile, its raw
+// cumulative counters restart from zero. The next poll must treat the lower
+// value as the delta directly, rather than computing a negative delta or
+// wrapping around as an unsigned integer.
+func TestCollector_UpdateMetrics_CounterReset(t *testing.T) {
+	services := []config.ServiceConfig{
+		newTestServiceConfig("reset-svc", "10.99.0.3:80", "tcp", "rr", nil),
+	}
+	c := NewCollector(&fakeLVSStatsProvider{}, zap.NewNop(), zap.NewNop(), services, newTestTrafficConfig(true, "15s"))
+
+	svcLabels := map[string]string{"service": "reset-svc", "listen": "10.99.0.3:80", "protocol": "tcp"}
+	backendLabels := map[string]string{"service": "reset-svc", "backend": "10.99.0.4:8080", "protocol": "tcp"}
+
+	// First poll establishes a baseline cumulative value.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.3:80/tcp": {Connections: 50, InBytes: 4000, OutBytes: 2000},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.3:80/tcp->10.99.0.4:8080": {
+				ServiceKey: "10.99.0.3:80/tcp", Connections: 50, InBytes: 4000, OutBytes: 2000,
+			},
+		},
+	})
+
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 50 {
+		t.Fatalf("after first poll: expected service connections=50, got %v (found=%v)", v, ok)
+	}
+
+	// Second poll: IPVS recreated the service/destination, so the raw
+	// cumulative counters reset to a value lower than what was last seen.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.3:80/tcp": {Connections: 5, InBytes: 300, OutBytes: 150},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.3:80/tcp->10.99.0.4:8080": {
+				ServiceKey: "10.99.0.3:80/tcp", Connections: 5, InBytes: 300, OutBytes: 150,
+			},
+		},
+	})
+
+	// The post-reset value (5) must be added as-is (50 + 5 = 55), never
+	// treated as a negative delta or wrapped into a huge uint64.
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 55 {
+		t.Fatalf("after counter reset: expected service connections=55, got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_backend_connections_total", backendLabels); !ok || v != 55 {
+		t.Fatalf("after counter reset: expected backend connections=55, got %v (found=%v)", v, ok)
+	}
+}
+
+// TestCollector_UpdateMetrics_VanishedKeyRevival verifies the IPVS
+// trash-list revival case: a backend/service key that disappears from the
+// snapshot for a few polls (e.g. a backend fails its health check and the
+// reconciler removes its destination) and then reappears with a HIGHER
+// cumulative value than before it vanished must add only the difference,
+// not the whole retained value. This models the measured production bug:
+// value 100 before removal, backend recovers with the destination revived
+// by the kernel at 120, so the reappearance poll must add exactly 20.
+func TestCollector_UpdateMetrics_VanishedKeyRevival(t *testing.T) {
+	services := []config.ServiceConfig{
+		newTestServiceConfig("revive-svc", "10.99.0.5:80", "tcp", "rr", nil),
+	}
+	c := NewCollector(&fakeLVSStatsProvider{}, zap.NewNop(), zap.NewNop(), services, newTestTrafficConfig(true, "15s"))
+
+	svcLabels := map[string]string{"service": "revive-svc", "listen": "10.99.0.5:80", "protocol": "tcp"}
+	backendLabels := map[string]string{"service": "revive-svc", "backend": "10.99.0.6:8080", "protocol": "tcp"}
+
+	// Poll 1: baseline cumulative value of 100.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.5:80/tcp": {Connections: 100},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.5:80/tcp->10.99.0.6:8080": {ServiceKey: "10.99.0.5:80/tcp", Connections: 100},
+		},
+	})
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 100 {
+		t.Fatalf("after poll 1: expected service connections=100, got %v (found=%v)", v, ok)
+	}
+
+	// Polls 2-4: the backend is unhealthy, its IPVS destination (and the
+	// service, for this test) is removed by the reconciler, so the key is
+	// absent from the snapshot entirely - not present with a lower/zero
+	// value, genuinely missing.
+	for i := 0; i < 3; i++ {
+		c.updateMetrics(&TrafficSnapshot{
+			Services: map[string]ServiceTrafficStats{},
+			Backends: map[string]BackendTrafficStats{},
+		})
+	}
+
+	// Poll 5: the backend recovers. IPVS revives the destination from its
+	// trash list with cumulative stats intact at 120 (not reset to 0).
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.5:80/tcp": {Connections: 120},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.5:80/tcp->10.99.0.6:8080": {ServiceKey: "10.99.0.5:80/tcp", Connections: 120},
+		},
+	})
+
+	// Only the 20-connection difference since the retained value of 100
+	// must be added, not the full 120 on top of the already-recorded 100
+	// (which would wrongly total 220).
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 120 {
+		t.Fatalf("after revival: expected service connections=120 (100+20 delta), got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_backend_connections_total", backendLabels); !ok || v != 120 {
+		t.Fatalf("after revival: expected backend connections=120 (100+20 delta), got %v (found=%v)", v, ok)
+	}
+}
+
+// TestCollector_UpdateMetrics_VanishedKeyGenuineReset verifies that a key
+// which disappears and later reappears with a LOWER cumulative value than
+// before it vanished (a genuine destroy-and-recreate-from-zero, as opposed
+// to an IPVS trash-list revival) still goes through the existing
+// deltaUint64 counter-reset guard and adds the new value directly.
+func TestCollector_UpdateMetrics_VanishedKeyGenuineReset(t *testing.T) {
+	services := []config.ServiceConfig{
+		newTestServiceConfig("reset-svc2", "10.99.0.7:80", "tcp", "rr", nil),
+	}
+	c := NewCollector(&fakeLVSStatsProvider{}, zap.NewNop(), zap.NewNop(), services, newTestTrafficConfig(true, "15s"))
+
+	svcLabels := map[string]string{"service": "reset-svc2", "listen": "10.99.0.7:80", "protocol": "tcp"}
+	backendLabels := map[string]string{"service": "reset-svc2", "backend": "10.99.0.8:8080", "protocol": "tcp"}
+
+	// Poll 1: baseline cumulative value of 100.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.7:80/tcp": {Connections: 100},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.7:80/tcp->10.99.0.8:8080": {ServiceKey: "10.99.0.7:80/tcp", Connections: 100},
+		},
+	})
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 100 {
+		t.Fatalf("after poll 1: expected service connections=100, got %v (found=%v)", v, ok)
+	}
+
+	// Poll 2: key vanishes entirely.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{},
+		Backends: map[string]BackendTrafficStats{},
+	})
+
+	// Poll 3: key reappears freshly created, cumulative value lower than
+	// what was retained (25 < 100) - a genuine reset, not a revival.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.7:80/tcp": {Connections: 25},
+		},
+		Backends: map[string]BackendTrafficStats{
+			"10.99.0.7:80/tcp->10.99.0.8:8080": {ServiceKey: "10.99.0.7:80/tcp", Connections: 25},
+		},
+	})
+
+	// The new value must be added as-is (100 + 25 = 125) via the
+	// counter-reset guard, never a negative/underflowed delta.
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 125 {
+		t.Fatalf("after genuine reset: expected service connections=125, got %v (found=%v)", v, ok)
+	}
+	if v, ok := gatherMetricValue(t, "fastVIP_backend_connections_total", backendLabels); !ok || v != 125 {
+		t.Fatalf("after genuine reset: expected backend connections=125, got %v (found=%v)", v, ok)
+	}
+}
+
+// TestCollector_UpdateMetrics_VanishedKeyEvictedAfterThreshold verifies the
+// memory bound: a key absent for more than maxAbsentPolls consecutive polls
+// is evicted from the carried-forward prev maps, so a later reappearance is
+// treated as a brand new key (its full value is added again), rather than
+// retaining stale data forever for keys that are genuinely gone for good.
+func TestCollector_UpdateMetrics_VanishedKeyEvictedAfterThreshold(t *testing.T) {
+	services := []config.ServiceConfig{
+		newTestServiceConfig("evict-svc", "10.99.0.9:80", "tcp", "rr", nil),
+	}
+	c := NewCollector(&fakeLVSStatsProvider{}, zap.NewNop(), zap.NewNop(), services, newTestTrafficConfig(true, "15s"))
+
+	svcLabels := map[string]string{"service": "evict-svc", "listen": "10.99.0.9:80", "protocol": "tcp"}
+
+	// Poll 1: baseline cumulative value of 100.
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.9:80/tcp": {Connections: 100},
+		},
+		Backends: map[string]BackendTrafficStats{},
+	})
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 100 {
+		t.Fatalf("after poll 1: expected service connections=100, got %v (found=%v)", v, ok)
+	}
+
+	// Key is absent for more than maxAbsentPolls consecutive polls, so it
+	// must be evicted from the carried-forward prev map.
+	for i := 0; i < maxAbsentPolls+1; i++ {
+		c.updateMetrics(&TrafficSnapshot{
+			Services: map[string]ServiceTrafficStats{},
+			Backends: map[string]BackendTrafficStats{},
+		})
+	}
+
+	// Reappearance after eviction is treated as a brand new key: the full
+	// current value (200) is added on top of the still-standing 100 from
+	// poll 1, i.e. the Prometheus counter becomes 300, not diffed against
+	// the long-evicted retained value of 100 (which would wrongly yield 200).
+	c.updateMetrics(&TrafficSnapshot{
+		Services: map[string]ServiceTrafficStats{
+			"10.99.0.9:80/tcp": {Connections: 200},
+		},
+		Backends: map[string]BackendTrafficStats{},
+	})
+
+	if v, ok := gatherMetricValue(t, "fastVIP_service_connections_total", svcLabels); !ok || v != 300 {
+		t.Fatalf("after eviction+reappearance: expected service connections=300 (100+200 full re-add), got %v (found=%v)", v, ok)
 	}
 }
 

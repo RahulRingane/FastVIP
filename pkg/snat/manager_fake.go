@@ -17,8 +17,16 @@ type FakeManager struct {
 	mu             sync.Mutex
 }
 
+// BackendKind identifies which SNAT implementation was linked at build time.
+// Without the `integration` build tag this is the in-memory fake, which writes
+// no iptables rules.
+const BackendKind = BackendKindFake
+
 // NewManager creates a fake in-memory SNAT Manager for non-Linux systems.
 func NewManager(logger *zap.Logger) (Manager, error) {
+	logger.Warn("FAKE SNAT BACKEND ACTIVE - no iptables rules will be written; " +
+		"full_nat services will not work. Rebuild with `make build BUILD_TAGS=integration`")
+
 	return &FakeManager{
 		managed:        make(map[string]SNATRule),
 		managedForward: make(map[string]ForwardRule),
