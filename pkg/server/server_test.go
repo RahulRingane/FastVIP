@@ -3,10 +3,13 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/RahulRingane/FastVIP/pkg/config"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -188,6 +191,105 @@ func TestLogKernelParamPreflightLogsInfoWhenAllMatch(t *testing.T) {
 	}
 	if logs.FilterMessage("kernel parameter preflight passed").Len() != 1 {
 		t.Fatalf("expected 1 kernel parameter preflight success log, got %d", logs.FilterMessage("kernel parameter preflight passed").Len())
+	}
+}
+
+// gatherGaugeValue scans the default Prometheus registry (what pkg/metrics's
+// promauto-registered collectors publish to) for a single metric/label-set
+// combination. pkg/metrics keeps its GaugeVec variables unexported, so this
+// is how an external package's test reads back the exact value recorded for
+// a specific label set.
+func gatherGaugeValue(t *testing.T, name string, labels map[string]string) (float64, bool) {
+	t.Helper()
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, mf := range families {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			got := make(map[string]string, len(m.GetLabel()))
+			for _, lp := range m.GetLabel() {
+				got[lp.GetName()] = lp.GetValue()
+			}
+
+			matched := true
+			for k, v := range labels {
+				if got[k] != v {
+					matched = false
+					break
+				}
+			}
+			if matched && m.Gauge != nil {
+				return m.Gauge.GetValue(), true
+			}
+		}
+	}
+	return 0, false
+}
+
+// TestUpdateHealthMetrics_UnhealthyBackendEmitsExplicitZero verifies that a
+// configured-but-unhealthy backend gets an explicit 0 series on
+// fastVIP_backend_health_status, rather than being silently absent. Before
+// the fix, updateHealthMetrics iterated healthMgr.GetAllStatuses() (only
+// tracked backends); it now iterates cfg.Services so a downstream consumer
+// can rely on the gauge going 1 -> 0 instead of a series vanishing.
+func TestUpdateHealthMetrics_UnhealthyBackendEmitsExplicitZero(t *testing.T) {
+	configYAML := `
+global:
+  log:
+    level: info
+services:
+  - name: web-service
+    listen: 10.0.0.1:80
+    protocol: tcp
+    scheduler: rr
+    health_check:
+      enabled: true
+      interval: 10ms
+      timeout: 50ms
+      fail_count: 1
+      rise_count: 1
+    backends:
+      - address: 127.0.0.1:1
+        weight: 1
+`
+	configPath := writeYAMLFile(t, t.TempDir(), configYAML)
+
+	srv := newTestServer(t, configPath)
+	t.Cleanup(func() {
+		srv.shutdown()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg := srv.configMgr.GetConfig()
+	// Nothing listens on 127.0.0.1:1, so the TCP check fails immediately and
+	// (with fail_count=1) the backend flips unhealthy on the first check.
+	srv.healthMgr.UpdateTargets(ctx, cfg.Services)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && srv.healthMgr.IsHealthy("127.0.0.1:1") {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if srv.healthMgr.IsHealthy("127.0.0.1:1") {
+		t.Fatal("expected backend 127.0.0.1:1 to become unhealthy")
+	}
+
+	srv.updateHealthMetrics()
+
+	labels := map[string]string{"service": "web-service", "backend": "127.0.0.1:1"}
+	value, found := gatherGaugeValue(t, "fastVIP_backend_health_status", labels)
+	if !found {
+		t.Fatal("expected an explicit fastVIP_backend_health_status series for the unhealthy backend, found none")
+	}
+	if value != 0 {
+		t.Fatalf("expected fastVIP_backend_health_status=0 for unhealthy backend, got %v", value)
 	}
 }
 

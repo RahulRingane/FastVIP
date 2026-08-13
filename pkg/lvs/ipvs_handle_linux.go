@@ -6,6 +6,10 @@ import (
 	mobyipvs "github.com/moby/ipvs"
 )
 
+// BackendKind identifies which IPVS implementation was linked at build time.
+// With the `integration` build tag this is the real netlink-backed handle.
+const BackendKind = BackendKindReal
+
 // linuxHandle wraps the real moby/ipvs Handle for Linux systems.
 type linuxHandle struct {
 	handle *mobyipvs.Handle

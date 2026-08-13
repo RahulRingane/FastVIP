@@ -6,6 +6,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// Build-time backend identifiers reported by BackendKind, whose value is set by
+// the build-tagged handle implementations (ipvs_handle_linux.go / _fake.go).
+const (
+	BackendKindReal = "real"
+	BackendKindFake = "fake"
+)
+
 // Manager wraps the IPVSHandle and provides IPVS CRUD operations with logging.
 type Manager struct {
 	handle IPVSHandle
@@ -19,7 +26,16 @@ func NewManager(logger *zap.Logger) (*Manager, error) {
 		return nil, fmt.Errorf("failed to create ipvs handle: %w", err)
 	}
 
-	logger.Info("IPVS manager initialized")
+	if BackendKind == BackendKindFake {
+		// A fake-backend binary starts cleanly and reports every reconcile as
+		// successful while programming nothing in the kernel. Without this it is
+		// indistinguishable from a working load balancer in the logs.
+		logger.Warn("FAKE IPVS BACKEND ACTIVE - no kernel rules will be programmed; " +
+			"this binary cannot balance traffic. Rebuild with `make build BUILD_TAGS=integration`")
+	} else {
+		logger.Info("IPVS manager initialized", zap.String("backend", BackendKind))
+	}
+
 	return &Manager{
 		handle: handle,
 		logger: logger,

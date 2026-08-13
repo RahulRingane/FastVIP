@@ -1,12 +1,21 @@
 # Project information
+# NOTE: the module path lives solely in go.mod. It was previously duplicated here
+# as an unused MODULE_NAME variable; the two drifted apart and broke the build.
 PROJECT_NAME := fastVIP
-MODULE_NAME := github.com/RahulRingane/FastVIP
 BUILD_TIME := $(shell date +%Y-%m-%d\ %H:%M:%S)
 BUILD_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 #BUILD_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
 # Build configuration
 BUILD_DIR := build
+
+# Optional go build tags, e.g. `make build BUILD_TAGS=integration`.
+# Empty by default so the plain `make build` dev path (including macOS, where the
+# integration-tagged sources do not compile) is unaffected. Note that without
+# `integration` the binary links the fake in-memory IPVS and SNAT backends and
+# programs nothing in the kernel — see pkg/lvs/ipvs_handle_fake.go.
+BUILD_TAGS ?=
+TAG_FLAGS := $(if $(BUILD_TAGS),-tags $(BUILD_TAGS),)
 
 # Linker flags for build information
 LDFLAGS := -ldflags "-X 'main.BuildTime=$(BUILD_TIME)' \
@@ -26,7 +35,7 @@ help: ## show help
 build: ## build the binary
 	@echo "Building $(PROJECT_NAME) ..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 go build $(LDFLAGS) -o build/fastVIP cmd/fastVIP/main.go
+	CGO_ENABLED=0 go build $(TAG_FLAGS) $(LDFLAGS) -o build/fastVIP cmd/fastVIP/main.go
 	@echo "✓ Build completed."
 
 .PHONY: build-dev
@@ -45,9 +54,9 @@ build-linux: ## build the binary for Linux
 	@echo "✓ Linux build completed"
 
 .PHONY: build-docker
-build-docker: ## build docker image: fastVIP/fastVIP
-	@echo "Building fastVIP/fastVIP:latest ..."
-	@docker build -t fastVIP/fastVIP .
+build-docker: ## build docker image: fastvip/fastvip
+	@echo "Building fastvip/fastvip:latest ..."
+	@docker build -t fastvip/fastvip .
 	@echo "✓ Build completed."
 
 .PHONY: test

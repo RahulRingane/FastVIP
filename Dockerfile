@@ -17,7 +17,13 @@ COPY tests/ tests/
 COPY Makefile Makefile
 
 # Build
-RUN make build
+# BUILD_TAGS=integration is required, not optional: the real IPVS netlink handle
+# (pkg/lvs/ipvs_handle_linux.go) and the real iptables SNAT manager
+# (pkg/snat/manager_linux.go) are both behind `//go:build integration`. Without
+# the tag this image would ship the fake in-memory backends, which start cleanly
+# and program nothing in the kernel. The runtime image is always Linux, so the
+# tagged sources always compile here.
+RUN make build BUILD_TAGS=integration
 
 ## runtime image
 FROM debian:bookworm-slim

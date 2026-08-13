@@ -7,6 +7,12 @@ import (
 	"sync"
 )
 
+// BackendKind identifies which IPVS implementation was linked at build time.
+// Without the `integration` build tag this is the in-memory fake, which accepts
+// every operation and programs nothing in the kernel. Callers surface this so a
+// no-op build cannot be mistaken for a working one at runtime.
+const BackendKind = BackendKindFake
+
 // fakeServiceKey is used internally by fakeHandle to index services.
 type fakeServiceKey struct {
 	address  string

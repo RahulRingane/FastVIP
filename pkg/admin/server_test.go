@@ -2,10 +2,12 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -226,8 +228,99 @@ func TestHandleReload(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
+	// No reload handler was registered, so /reload must not claim success.
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", resp.StatusCode)
+	}
+}
+
+// TestHandleReloadInvokesHandler verifies that a registered reload handler is
+// actually called and that success is reported to the client.
+func TestHandleReloadInvokesHandler(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := Config{
+		ListenAddr:     "127.0.0.1:0",
+		MetricsEnabled: false,
+		MetricsPath:    "/metrics",
+	}
+
+	server := NewServer(cfg, logger)
+
+	var called atomic.Int32
+	server.SetReloadFunc(func() error {
+		called.Add(1)
+		return nil
+	})
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("failed to start server: %v", err)
+	}
+	defer server.Stop(context.Background())
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := server.Addr()
+	if addr == "" {
+		t.Skip("cannot determine server address")
+	}
+
+	resp, err := http.Post(fmt.Sprintf("http://%s/reload", addr), "application/json", nil)
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+	if got := called.Load(); got != 1 {
+		t.Errorf("expected reload handler to be called once, got %d", got)
+	}
+}
+
+// TestHandleReloadHandlerError verifies that a failing reload (e.g. an invalid
+// config file) is reported as an error instead of a misleading 200.
+func TestHandleReloadHandlerError(t *testing.T) {
+	logger := zap.NewNop()
+	cfg := Config{
+		ListenAddr:     "127.0.0.1:0",
+		MetricsEnabled: false,
+		MetricsPath:    "/metrics",
+	}
+
+	server := NewServer(cfg, logger)
+	server.SetReloadFunc(func() error {
+		return errors.New("config validation failed")
+	})
+
+	if err := server.Start(); err != nil {
+		t.Fatalf("failed to start server: %v", err)
+	}
+	defer server.Stop(context.Background())
+
+	time.Sleep(100 * time.Millisecond)
+
+	addr := server.Addr()
+	if addr == "" {
+		t.Skip("cannot determine server address")
+	}
+
+	resp, err := http.Post(fmt.Sprintf("http://%s/reload", addr), "application/json", nil)
+	if err != nil {
+		t.Fatalf("failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read body: %v", err)
+	}
+	if !strings.Contains(string(body), "config validation failed") {
+		t.Errorf("expected body to surface the reload error, got %q", string(body))
 	}
 }
 

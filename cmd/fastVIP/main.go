@@ -10,7 +10,9 @@ import (
 
 	"github.com/RahulRingane/FastVIP/pkg/config"
 	"github.com/RahulRingane/FastVIP/pkg/logutil"
+	"github.com/RahulRingane/FastVIP/pkg/lvs"
 	"github.com/RahulRingane/FastVIP/pkg/server"
+	"github.com/RahulRingane/FastVIP/pkg/snat"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -38,12 +40,18 @@ func newRootCommand() *cobra.Command {
 		Long:  "A lightweight four-layer TCP load balancer using Linux IPVS with declarative reconcile mode.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
-				fmt.Printf("Version: %s\nBuild commit: %s\nBuild time: %s\nGo version: %s\n",
+				fmt.Printf("Version: %s\nBuild commit: %s\nBuild time: %s\nGo version: %s\nIPVS backend: %s\nSNAT backend: %s\n",
 					Version,
 					BuildCommit,
 					BuildTime,
 					runtime.Version(),
+					lvs.BackendKind,
+					snat.BackendKind,
 				)
+				if lvs.BackendKind == lvs.BackendKindFake || snat.BackendKind == snat.BackendKindFake {
+					fmt.Println("\nWARNING: this binary links fake backends and cannot balance traffic.")
+					fmt.Println("Rebuild with `make build BUILD_TAGS=integration`.")
+				}
 				return nil
 			}
 			return cmd.Help()

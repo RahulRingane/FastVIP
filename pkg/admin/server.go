@@ -18,6 +18,7 @@ type Server struct {
 	logger          *zap.Logger
 	server          *http.Server
 	healthCheckFunc func() map[string]bool
+	reloadFunc      func() error
 	listenAddr      string
 	actualAddr      string
 	metricsPath     string
@@ -44,6 +45,14 @@ func NewServer(cfg Config, logger *zap.Logger) *Server {
 // SetHealthCheckFunc sets the function used to retrieve health status.
 func (s *Server) SetHealthCheckFunc(fn func() map[string]bool) {
 	s.healthCheckFunc = fn
+}
+
+// SetReloadFunc sets the function invoked by POST /reload. It must re-read the
+// config and trigger a reconcile, returning an error if the new config is
+// invalid. Like SetHealthCheckFunc, it must be called before Start.
+// If unset, /reload reports 503 rather than claiming success.
+func (s *Server) SetReloadFunc(fn func() error) {
+	s.reloadFunc = fn
 }
 
 // Start starts the admin HTTP server in a background goroutine.
@@ -139,10 +148,29 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement config reload trigger
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.reloadFunc == nil {
+		s.logger.Warn("config reload requested but no reload handler is registered")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"status":"error","error":"reload handler not registered"}`)
+		return
+	}
+
 	s.logger.Info("config reload requested via admin API")
+
+	if err := s.reloadFunc(); err != nil {
+		// The previous config stays in effect; report the validation failure
+		// rather than a misleading success.
+		s.logger.Error("config reload via admin API failed", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"status":"error","error":%q}`, err.Error())
+		return
+	}
+
+	s.logger.Info("config reloaded via admin API")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"reload triggered"}`))
+	fmt.Fprint(w, `{"status":"reloaded"}`)
 }
 
 // formatHealthJSON converts health map to JSON string.

@@ -113,7 +113,28 @@ var (
 			Help: "Total number of reconcile errors",
 		},
 	)
+
+	// Build-time backend selection (Gauge). 1 means a fake, no-op backend was
+	// linked instead of the real kernel-facing one, so the process programs
+	// nothing despite reporting successful reconciles. Alert on > 0.
+	fakeBackendActive = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "fastVIP_fake_backend_active",
+			Help: "1 if a fake (no-op) backend is linked for this component, 0 if the real one is",
+		},
+		[]string{"component"},
+	)
 )
+
+// SetFakeBackendActive records whether a component ("ipvs", "snat") is running
+// against its fake in-memory implementation rather than the real kernel one.
+func SetFakeBackendActive(component string, isFake bool) {
+	value := 0.0
+	if isFake {
+		value = 1.0
+	}
+	fakeBackendActive.WithLabelValues(component).Set(value)
+}
 
 // SetServiceTraffic updates service-level traffic counters.
 // Note: Prometheus Counter.Add() accepts float64, we convert from uint64.

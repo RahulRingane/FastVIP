@@ -18,6 +18,10 @@ const (
 	forwardChain = "EZLB-FORWARD"
 )
 
+// BackendKind identifies which SNAT implementation was linked at build time.
+// With the `integration` build tag this is the real iptables-backed manager.
+const BackendKind = BackendKindReal
+
 // linuxManager manages iptables SNAT and FORWARD rules on Linux using coreos/go-iptables.
 type linuxManager struct {
 	ipt            *iptables.IPTables

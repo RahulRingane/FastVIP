@@ -2,6 +2,13 @@ package snat
 
 import "fmt"
 
+// Build-time backend identifiers reported by BackendKind, whose value is set by
+// the build-tagged manager implementations (manager_linux.go / manager_fake.go).
+const (
+	BackendKindReal = "real"
+	BackendKindFake = "fake"
+)
+
 // SNATRule describes a single SNAT/MASQUERADE rule for a backend destination.
 type SNATRule struct {
 	BackendIP   string
