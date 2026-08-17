@@ -19,6 +19,8 @@ jobs:
       run: go mod tidy
     - name: Test
       run: make test
-    # requires root privileges
-    #- name: Test E2E
-    #  run: make test-e2e
+
+   # Requires root privileges and Linux kernel/IPVS access.
+   # Not supported on standard GitHub-hosted runners.
+   # - name: Test E2E
+   #   run: sudo make test-e2e
