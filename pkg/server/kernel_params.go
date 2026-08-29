@@ -60,7 +60,7 @@ func (s *Server) logKernelParamPreflight() {
 	}
 }
 
-// isValid 检查实际值是否符合期望值
+// isValid
 func (c kernelParamCheck) isValid(actual string) bool {
 	if c.expecteds != nil {
 		_, ok := c.expecteds[actual]
@@ -69,7 +69,7 @@ func (c kernelParamCheck) isValid(actual string) bool {
 	return actual == c.expected
 }
 
-// expectedString 返回期望值的字符串表示，用于日志
+// expectedString
 func (c kernelParamCheck) expectedString() string {
 	if c.expecteds != nil {
 		var values []string
