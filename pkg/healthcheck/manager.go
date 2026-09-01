@@ -101,6 +101,10 @@ func (m *Manager) UpdateTargets(ctx context.Context, services []config.ServiceCo
 				svcCfg.HealthCheck.GetHTTPPath(),
 				svcCfg.HealthCheck.GetHTTPExpectedStatus(),
 			)
+
+		case "udp":
+			checker = NewUDPChecker(svcCfg.HealthCheck.GetTimeout())
+
 		default:
 			checker = NewTCPChecker(svcCfg.HealthCheck.GetTimeout())
 		}

@@ -37,6 +37,35 @@ func (c *TCPChecker) Check(address string) error {
 	return nil
 }
 
+type UDPChecker struct {
+	timeout time.Duration
+}
+
+func NewUDPChecker(timeout time.Duration) *UDPChecker {
+	return &UDPChecker{
+		timeout: timeout,
+	}
+}
+
+func (c *UDPChecker) Check(address string) error {
+	conn, err := net.DialTimeout("udp", address, c.timeout)
+	if err != nil {
+		return fmt.Errorf("udp health check failed for %s: %w", address, err)
+	}
+	defer conn.Close()
+
+	if err := conn.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+		return fmt.Errorf("udp health check failed for %s: %w", address, err)
+	}
+
+	_, err = conn.Write([]byte("FASTVIP_HEALTH_CHECK"))
+	if err != nil {
+		return fmt.Errorf("udp health check failed for %s: %w", address, err)
+	}
+
+	return nil
+}
+
 // HTTPChecker implements health checking via HTTP GET requests.
 type HTTPChecker struct {
 	client         *http.Client
