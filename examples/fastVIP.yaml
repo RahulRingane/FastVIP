@@ -1,5 +1,5 @@
 global:
-  admin_address: "127.0.0.1:9095"  # Admin HTTP server address for metrics and health checks (default: disabled)
+  admin_address: "192.168.1.12:80"  # Admin HTTP server address for metrics and health checks (default: disabled)
   cleanup_on_exit: true      # Remove managed IPVS services and FastVIP-SNAT iptables chain on exit (default: true)
   metrics_enabled: true      # Enable Prometheus metrics endpoint (default: true)
   metrics_path: "/metrics"   # Metrics endpoint path (default: /metrics)
@@ -17,18 +17,19 @@ global:
 services:
   - name: web-service
     listen: 10.0.0.1:80
-    protocol: tcp
+    protocol: udp
     scheduler: wrr
     health_check:
       enabled: true
+      type: udp
       interval: 5s
       timeout: 3s
       fail_count: 3
       rise_count: 2
     backends:
-      - address: 192.168.3.10:9091
+      - address: 192.168.1.10:9091
         weight: 1
-      - address: 192.168.3.11:9092
+      - address: 192.168.1.11:9092
         weight: 1
 
   - name: api-service

@@ -413,7 +413,7 @@ func Validate(cfg *Config) error {
 
 			// Validate health check type
 			checkType := svc.HealthCheck.GetType()
-			if checkType != "tcp" && checkType != "http" {
+			if checkType != "tcp" && checkType != "http" && checkType != "udp" {
 				return fmt.Errorf("service %q: unsupported health_check.type %q (supported: tcp, http)", svc.Name, checkType)
 			}
 
