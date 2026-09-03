@@ -32,23 +32,14 @@ services:
       - address: 192.168.1.11:9092
         weight: 1
 
-  - name: api-service
-    listen: 10.0.0.1:443
-    protocol: tcp
-    scheduler: wlc
-    health_check:
-      enabled: true
-      type: http
-      interval: 10s
-      timeout: 2s
-      fail_count: 3
-      rise_count: 2
-      http_path: /healthz
-      http_expected_status: 200
+  - name: web
+    mode: http
+    listen: 0.0.0.0:8080
+    scheduler: rr
     backends:
-      - address: 192.168.2.10:8443
+      - address: 127.0.0.1:9001
         weight: 1
-      - address: 192.168.2.11:8443
+      - address: 127.0.0.1:9002
         weight: 1
 
   - name: internal-service

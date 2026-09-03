@@ -41,6 +41,7 @@ type UDPChecker struct {
 	timeout time.Duration
 }
 
+// NewUDPhecker creates a new UDPChecker with the given timeout.
 func NewUDPChecker(timeout time.Duration) *UDPChecker {
 	return &UDPChecker{
 		timeout: timeout,

@@ -141,15 +141,16 @@ func (g GlobalConfig) GetMetricsPath() string {
 
 // ServiceConfig defines a virtual service with its backends and health check settings.
 type ServiceConfig struct {
-	TrafficLog  *bool             `yaml:"traffic_log"       mapstructure:"traffic_log"`
-	Name        string            `yaml:"name"              mapstructure:"name"`
-	Listen      string            `yaml:"listen"            mapstructure:"listen"`
-	Protocol    string            `yaml:"protocol"          mapstructure:"protocol"`
-	Scheduler   string            `yaml:"scheduler"         mapstructure:"scheduler"`
-	SnatIP      string            `yaml:"snat_ip"           mapstructure:"snat_ip"`
-	Backends    []BackendConfig   `yaml:"backends"          mapstructure:"backends"`
-	HealthCheck HealthCheckConfig `yaml:"health_check"      mapstructure:"health_check"`
-	FullNAT     bool              `yaml:"full_nat"          mapstructure:"full_nat"`
+	Name        string            `yaml:"name" mapstructure:"name"`
+	Mode        string            `yaml:"mode" mapstructure:"mode"`
+	Listen      string            `yaml:"listen" mapstructure:"listen"`
+	Protocol    string            `yaml:"protocol" mapstructure:"protocol"`
+	Scheduler   string            `yaml:"scheduler" mapstructure:"scheduler"`
+	SnatIP      string            `yaml:"snat_ip" mapstructure:"snat_ip"`
+	Backends    []BackendConfig   `yaml:"backends" mapstructure:"backends"`
+	HealthCheck HealthCheckConfig `yaml:"health_check" mapstructure:"health_check"`
+	FullNAT     bool              `yaml:"full_nat" mapstructure:"full_nat"`
+	TrafficLog  *bool             `yaml:"traffic_log" mapstructure:"traffic_log"`
 }
 
 // HealthCheckConfig defines per-service health check parameters.

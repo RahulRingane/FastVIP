@@ -8,6 +8,7 @@ import (
 	"github.com/RahulRingane/FastVIP/pkg/admin"
 	"github.com/RahulRingane/FastVIP/pkg/config"
 	"github.com/RahulRingane/FastVIP/pkg/healthcheck"
+	httpmanager "github.com/RahulRingane/FastVIP/pkg/http"
 	"github.com/RahulRingane/FastVIP/pkg/lvs"
 	"github.com/RahulRingane/FastVIP/pkg/metrics"
 	"github.com/RahulRingane/FastVIP/pkg/snat"
@@ -22,6 +23,7 @@ type Server struct {
 	reconciler    *lvs.Reconciler
 	healthMgr     *healthcheck.Manager
 	snatMgr       snat.Manager
+	httpMgr       *httpmanager.Manager
 	adminServer   *admin.Server
 	logger        *zap.Logger
 	trafficLogger *zap.Logger
@@ -54,6 +56,9 @@ func newServerWithManager(configPath string, lvsMgr *lvs.Manager, logger *zap.Lo
 		return nil, fmt.Errorf("failed to initialize SNAT manager: %w", err)
 	}
 
+	// Initialize HTTP manager
+	httpMgr := httpmanager.NewManager()
+
 	// Publish which backends were linked at build time so a no-op fake build is
 	// visible in monitoring, not just in a startup log line.
 	metrics.SetFakeBackendActive("ipvs", lvs.BackendKind == lvs.BackendKindFake)
@@ -63,6 +68,7 @@ func newServerWithManager(configPath string, lvsMgr *lvs.Manager, logger *zap.Lo
 		configMgr:     configMgr,
 		lvsMgr:        lvsMgr,
 		snatMgr:       snatMgr,
+		httpMgr:       httpMgr,
 		logger:        logger,
 		trafficLogger: trafficLogger,
 	}
@@ -84,6 +90,10 @@ func newServerWithManager(configPath string, lvsMgr *lvs.Manager, logger *zap.Lo
 func (s *Server) Run(ctx context.Context) error {
 	cfg := s.configMgr.GetConfig()
 	s.logKernelParamPreflight()
+
+	if err := s.syncHTTPServices(cfg); err != nil {
+		return fmt.Errorf("failed to start HTTP services: %w", err)
+	}
 
 	// Initialize admin server if configured
 	if cfg.Global.AdminAddress != "" {
@@ -132,6 +142,7 @@ func (s *Server) Run(ctx context.Context) error {
 			return nil
 		}
 	}
+
 }
 
 // RunOnce performs a single reconcile pass and then exits.
@@ -266,4 +277,35 @@ func (s *Server) shutdown() {
 	}
 	s.lvsMgr.Close()
 	s.logger.Info("server stopped")
+}
+
+func (s *Server) syncHTTPServices(cfg *config.Config) error {
+	for _, svc := range cfg.Services {
+		if svc.Mode != "http" {
+			continue
+		}
+
+		service := &httpmanager.Service{
+			Name:     svc.Name,
+			Listen:   svc.Listen,
+			Backends: make([]string, 0, len(svc.Backends)),
+		}
+
+		for _, backend := range svc.Backends {
+			service.Backends = append(
+				service.Backends,
+				backend.Address,
+			)
+		}
+
+		if err := s.httpMgr.AddService(service); err != nil {
+			return err
+		}
+
+		if err := s.httpMgr.StartService(service.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
