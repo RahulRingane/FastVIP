@@ -9,9 +9,12 @@ import (
 )
 
 type Manager struct {
-	mu        sync.RWMutex
-	services  map[string]*Service
-	servers   map[string]*http.Server
+	mu       sync.RWMutex
+	services map[string]*Service
+	servers  map[string]*http.Server
+
+	proxy *Proxy
+
 	listeners map[string]net.Listener
 }
 
@@ -25,10 +28,14 @@ type Service struct {
 }
 
 func NewManager() *Manager {
+	transport := NewTransport()
+	proxy := NewProxy(transport)
+
 	return &Manager{
 		services:  make(map[string]*Service),
 		servers:   make(map[string]*http.Server),
 		listeners: make(map[string]net.Listener),
+		proxy:     proxy,
 	}
 }
 
@@ -71,7 +78,7 @@ func (m *Manager) StartService(name string) error {
 	}
 
 	// HTTP request handling is implemented in handler.go.
-	handler := newHandler(service)
+	handler := newHandler(service, m.proxy)
 
 	server := &http.Server{
 		Addr:    service.Listen,
