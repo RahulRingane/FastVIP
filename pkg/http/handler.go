@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func newHandler(service *Service) http.Handler {
+func newHandler(service *Service, proxy *Proxy) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backend := service.nextBackend()
 
@@ -14,13 +14,8 @@ func newHandler(service *Service) http.Handler {
 			return
 		}
 
-		log.Printf(
-			"http %s %s -> %s",
-			r.Method,
-			r.URL.Path,
-			backend,
-		)
+		log.Printf("http %s %s -> %s", r.Method, r.URL.Path, backend)
 
-		proxyRequest(w, r, backend)
+		proxy.ServeHTTP(w, r, backend)
 	})
 }
