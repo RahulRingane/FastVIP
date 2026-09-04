@@ -38,7 +38,7 @@ func (c *connBody) Read(p []byte) (int, error) {
 }
 
 func (c *connBody) Close() error {
-	log.Printf("connBody.Close backend=%s reusable=%v", c.backend, c.reusable)
+
 	_, err := io.Copy(io.Discard, c.body)
 
 	closeErr := c.body.Close()
@@ -54,7 +54,7 @@ func (c *connBody) Close() error {
 	}
 
 	if c.reusable {
-		log.Printf("PUT connection into pool: %s", c.backend)
+
 		c.pool.put(c.backend, c.conn)
 	} else {
 		c.conn.Close()
@@ -72,9 +72,8 @@ func (t *Transport) RoundTrip(
 	reused := conn != nil
 
 	if conn != nil {
-		log.Printf("REUSE backend connection: %s", backend)
+
 	} else {
-		log.Printf("DIAL new backend connection: %s", backend)
 
 		var err error
 
