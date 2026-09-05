@@ -27,7 +27,7 @@ func NewTransport() *Transport {
 
 type connBody struct {
 	body     io.ReadCloser
-	conn     net.Conn
+	conn     *pooledConn
 	backend  string
 	pool     *connPool
 	reusable bool
@@ -44,20 +44,20 @@ func (c *connBody) Close() error {
 	closeErr := c.body.Close()
 
 	if err != nil {
-		c.conn.Close()
+		c.conn.conn.Close()
 		return err
 	}
 
 	if closeErr != nil {
-		c.conn.Close()
+		c.conn.conn.Close()
 		return closeErr
 	}
 
 	if c.reusable {
-
-		c.pool.put(c.backend, c.conn)
+		log.Printf("PUT connection into pool: %s", c.backend)
+		c.pool.put(c.backend, *c.conn)
 	} else {
-		c.conn.Close()
+		c.conn.conn.Close()
 	}
 
 	return nil
@@ -68,16 +68,13 @@ func (t *Transport) RoundTrip(
 	backend string,
 ) (*http.Response, error) {
 
-	conn := t.pool.get(backend)
-	reused := conn != nil
+	pc := t.pool.get(backend)
+	reused := pc != nil
 
-	if conn != nil {
+	if pc == nil {
 
-	} else {
-
-		var err error
-
-		conn, err = net.DialTimeout(
+		log.Printf("DIAL new backend connection: %s", backend)
+		conn, err := net.DialTimeout(
 			"tcp",
 			backend,
 			t.dialTimeout,
@@ -85,18 +82,26 @@ func (t *Transport) RoundTrip(
 		if err != nil {
 			return nil, err
 		}
+
+		pc = &pooledConn{
+			conn:   conn,
+			reader: bufio.NewReader(conn),
+		}
+	} else {
+		log.Printf("REUSE backend connection: %s", backend)
 	}
 
-	resp, err := t.roundTripConn(r, backend, conn)
+	resp, err := t.roundTripConn(r, backend, pc)
+
 	if err == nil {
 		return resp, nil
 	}
 
 	// The pooled connection may be stale.
 	if reused {
-		t.pool.discard(conn)
+		t.pool.discard(pc)
 
-		conn, err = net.DialTimeout(
+		conn, err := net.DialTimeout(
 			"tcp",
 			backend,
 			t.dialTimeout,
@@ -105,23 +110,28 @@ func (t *Transport) RoundTrip(
 			return nil, err
 		}
 
-		resp, err := t.roundTripConn(r, backend, conn)
+		pc = &pooledConn{
+			conn:   conn,
+			reader: bufio.NewReader(conn),
+		}
+
+		resp, err := t.roundTripConn(r, backend, pc)
 		if err != nil {
-			conn.Close()
+			pc.conn.Close()
 			return nil, err
 		}
 
 		return resp, nil
 	}
 
-	conn.Close()
+	pc.conn.Close()
 	return nil, err
 }
 
 func (t *Transport) roundTripConn(
 	r *http.Request,
 	backend string,
-	conn net.Conn,
+	pc *pooledConn,
 ) (*http.Response, error) {
 
 	req := r.Clone(r.Context())
@@ -130,13 +140,11 @@ func (t *Transport) roundTripConn(
 	req.URL.Host = backend
 	req.RequestURI = ""
 
-	if err := req.Write(conn); err != nil {
+	if err := req.Write(pc.conn); err != nil {
 		return nil, err
 	}
 
-	reader := bufio.NewReader(conn)
-
-	resp, err := http.ReadResponse(reader, req)
+	resp, err := http.ReadResponse(pc.reader, req)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +158,7 @@ func (t *Transport) roundTripConn(
 
 	resp.Body = &connBody{
 		body:     resp.Body,
-		conn:     conn,
+		conn:     pc,
 		backend:  backend,
 		pool:     t.pool,
 		reusable: !resp.Close,

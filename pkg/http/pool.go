@@ -1,22 +1,28 @@
 package http
 
 import (
+	"bufio"
 	"net"
 	"sync"
 )
 
+type pooledConn struct {
+	conn   net.Conn
+	reader *bufio.Reader
+}
+
 type connPool struct {
 	mu   sync.Mutex
-	idle map[string][]net.Conn
+	idle map[string][]pooledConn
 }
 
 func newConnPool() *connPool {
 	return &connPool{
-		idle: make(map[string][]net.Conn),
+		idle: make(map[string][]pooledConn),
 	}
 }
 
-func (p *connPool) get(backend string) net.Conn {
+func (p *connPool) get(backend string) *pooledConn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -29,18 +35,18 @@ func (p *connPool) get(backend string) net.Conn {
 	conn := conns[len(conns)-1]
 	p.idle[backend] = conns[:len(conns)-1]
 
-	return conn
+	return &conn
 }
 
-func (p *connPool) put(backend string, conn net.Conn) {
+func (p *connPool) put(backend string, conn pooledConn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.idle[backend] = append(p.idle[backend], conn)
 }
 
-func (p *connPool) discard(conn net.Conn) {
-	if conn != nil {
-		conn.Close()
+func (p *connPool) discard(conn *pooledConn) {
+	if conn != nil && conn.conn != nil {
+		conn.conn.Close()
 	}
 }
