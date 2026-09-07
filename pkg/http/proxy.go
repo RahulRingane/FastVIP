@@ -5,16 +5,19 @@ import (
 	"net/http"
 )
 
+// Proxy is a simple HTTP reverse proxy that forwards requests to a specified backend.
 type Proxy struct {
 	transport RoundTripper
 }
 
+// NewProxy creates a new Proxy with the given RoundTripper.
 func NewProxy(transport RoundTripper) *Proxy {
 	return &Proxy{
 		transport: transport,
 	}
 }
 
+// ServeHTTP handles incoming HTTP requests and forwards them to the specified backend.
 func (p *Proxy) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,

@@ -18,7 +18,6 @@ type connPool struct {
 	idle map[string][]pooledConn
 }
 
-// connBody wraps the response body and manages connection reuse.
 func newConnPool() *connPool {
 	return &connPool{
 		idle: make(map[string][]pooledConn),
