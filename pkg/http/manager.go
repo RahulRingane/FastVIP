@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// Manager manages multiple HTTP services, each with its own set of backends.
 type Manager struct {
 	mu       sync.RWMutex
 	services map[string]*Service
@@ -18,6 +19,7 @@ type Manager struct {
 	listeners map[string]net.Listener
 }
 
+// Service represents an HTTP service with a name, listen address, and a list of backend servers.
 type Service struct {
 	Name     string
 	Listen   string
@@ -27,6 +29,7 @@ type Service struct {
 	mu   sync.Mutex
 }
 
+// nextBackend returns the next backend in a round-robin fashion.
 func NewManager() *Manager {
 	transport := NewTransport()
 	proxy := NewProxy(transport)
@@ -39,6 +42,7 @@ func NewManager() *Manager {
 	}
 }
 
+// nextBackend returns the next backend in a round-robin fashion.
 func (m *Manager) AddService(service *Service) error {
 	if service == nil {
 		return fmt.Errorf("service is nil")
@@ -68,6 +72,7 @@ func (m *Manager) AddService(service *Service) error {
 	return nil
 }
 
+// StartService starts the HTTP service with the given name. It listens on the specified address and handles incoming requests using the proxy.
 func (m *Manager) StartService(name string) error {
 	m.mu.RLock()
 	service, exists := m.services[name]
@@ -116,6 +121,7 @@ func (m *Manager) StartService(name string) error {
 	return nil
 }
 
+// StopService stops the HTTP service with the given name. It closes the server and removes it from the manager's records.
 func (m *Manager) StopService(name string) error {
 	m.mu.Lock()
 
@@ -138,6 +144,7 @@ func (m *Manager) StopService(name string) error {
 	return nil
 }
 
+// RemoveService removes the service with the given name from the manager. It returns an error if the service is still running or does not exist.
 func (m *Manager) RemoveService(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -155,6 +162,7 @@ func (m *Manager) RemoveService(name string) error {
 	return nil
 }
 
+// ServiceAddr returns the listening address of the service with the given name. It returns an error if the service is not running or does not exist.
 func (m *Manager) ServiceAddr(name string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
