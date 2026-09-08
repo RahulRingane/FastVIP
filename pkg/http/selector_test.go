@@ -2,6 +2,7 @@ package http
 
 import "testing"
 
+// TestNextBackend_RoundRobin tests the round-robin selection of backends in the Service struct.
 func TestNextBackend_RoundRobin(t *testing.T) {
 	service := &Service{
 		Name: "test",

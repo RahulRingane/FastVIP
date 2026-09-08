@@ -38,9 +38,7 @@ func (p *Proxy) ServeHTTP(
 		}
 	}
 
-	// Copy status.
 	w.WriteHeader(resp.StatusCode)
 
-	// Copy body.
 	_, _ = io.Copy(w, resp.Body)
 }
