@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestHTTPManager_ProxyAndRoundRobin tests the HTTP Manager's ability to proxy requests to multiple backends in a round-robin fashion.
 func TestHTTPManager_ProxyAndRoundRobin(t *testing.T) {
 	// Backend 1
 	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
