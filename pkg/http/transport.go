@@ -9,10 +9,12 @@ import (
 	"time"
 )
 
+// RoundTripper defines the interface for executing a single HTTP transaction, obtaining the Response for a given Request.
 type RoundTripper interface {
 	RoundTrip(r *http.Request, backend string) (*http.Response, error)
 }
 
+// Transport is a custom implementation of the RoundTripper interface that manages HTTP connections to backend services.
 type Transport struct {
 	dialTimeout time.Duration
 	pool        *connPool
@@ -157,7 +159,8 @@ func (t *Transport) roundTripConn(
 	)
 
 	resp.Body = &connBody{
-		body:     resp.Body,
+		body: resp.Body,
+
 		conn:     pc,
 		backend:  backend,
 		pool:     t.pool,
