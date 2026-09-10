@@ -1,5 +1,6 @@
 package http
 
+// Service represents a backend service with multiple backend endpoints and a round-robin load balancing mechanism.
 func (s *Service) nextBackend() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
