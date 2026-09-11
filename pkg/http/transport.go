@@ -27,6 +27,7 @@ func NewTransport() *Transport {
 	}
 }
 
+// pooledConn represents a TCP connection to a backend service, along with a buffered reader for reading responses.
 type connBody struct {
 	body     io.ReadCloser
 	conn     *pooledConn
@@ -35,6 +36,7 @@ type connBody struct {
 	reusable bool
 }
 
+// pooledConn represents a TCP connection to a backend service, along with a buffered reader for reading responses.
 func (c *connBody) Read(p []byte) (int, error) {
 	return c.body.Read(p)
 }
