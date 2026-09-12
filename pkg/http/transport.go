@@ -23,7 +23,11 @@ type Transport struct {
 func NewTransport() *Transport {
 	return &Transport{
 		dialTimeout: 10 * time.Second,
-		pool:        newConnPool(),
+		pool: newConnPool(
+			2,
+			30*time.Second,
+			5*time.Second,
+		),
 	}
 }
 
@@ -36,11 +40,12 @@ type connBody struct {
 	reusable bool
 }
 
-// pooledConn represents a TCP connection to a backend service, along with a buffered reader for reading responses.
+// Read reads data from the underlying response body.
 func (c *connBody) Read(p []byte) (int, error) {
 	return c.body.Read(p)
 }
 
+// Close closes the response body and returns the connection to the pool if it is reusable, or closes it otherwise.
 func (c *connBody) Close() error {
 
 	_, err := io.Copy(io.Discard, c.body)
@@ -170,4 +175,10 @@ func (t *Transport) roundTripConn(
 	}
 
 	return resp, nil
+}
+
+func (t *Transport) Close() {
+	if t.pool != nil {
+		t.pool.Close()
+	}
 }
