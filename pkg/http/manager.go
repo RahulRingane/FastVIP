@@ -165,3 +165,25 @@ func (m *Manager) ServiceAddr(name string) (string, error) {
 
 	return ln.Addr().String(), nil
 }
+
+// StopService stops the HTTP service with the given name.
+func (m *Manager) StopService(name string) error {
+	m.mu.Lock()
+	server, exists := m.servers[name]
+	m.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("service %q is not running", name)
+	}
+
+	if err := server.Close(); err != nil {
+		return fmt.Errorf("failed to stop HTTP service %q: %w", name, err)
+	}
+
+	m.mu.Lock()
+	delete(m.servers, name)
+	delete(m.listeners, name)
+	m.mu.Unlock()
+
+	return nil
+}

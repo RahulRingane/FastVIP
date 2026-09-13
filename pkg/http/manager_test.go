@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/RahulRingane/FastVIP/pkg/config"
 )
 
 // TestHTTPManager_ProxyAndRoundRobin tests the HTTP Manager's ability to proxy requests to multiple backends in a round-robin fashion.
@@ -22,16 +25,21 @@ func TestHTTPManager_ProxyAndRoundRobin(t *testing.T) {
 	}))
 	defer backend2.Close()
 
-	// Create HTTP service
-	service := &Service{
-		Name:   "test",
-		Listen: "127.0.0.1:0",
-		Backends: []string{
-			backend1.Listener.Addr().String(),
-			backend2.Listener.Addr().String(),
-		},
+	backends := []string{
+		backend1.Listener.Addr().String(),
+		backend2.Listener.Addr().String(),
 	}
 
+	service := NewService(
+		"test",
+		"127.0.0.1:0",
+		backends,
+		config.ConnectionPoolConfig{
+			MaxIdle:         10,
+			IdleTimeout:     30 * time.Second,
+			CleanupInterval: 10 * time.Second,
+		},
+	)
 	// Create manager
 	manager := NewManager()
 
