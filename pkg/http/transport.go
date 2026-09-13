@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/RahulRingane/FastVIP/pkg/config"
 )
 
 // RoundTripper defines the interface for executing a single HTTP transaction, obtaining the Response for a given Request.
@@ -20,13 +22,13 @@ type Transport struct {
 	pool        *connPool
 }
 
-func NewTransport() *Transport {
+func NewTransport(poolConfig config.ConnectionPoolConfig) *Transport {
 	return &Transport{
 		dialTimeout: 10 * time.Second,
 		pool: newConnPool(
-			2,
-			30*time.Second,
-			5*time.Second,
+			poolConfig.MaxIdle,
+			poolConfig.IdleTimeout,
+			poolConfig.CleanupInterval,
 		),
 	}
 }

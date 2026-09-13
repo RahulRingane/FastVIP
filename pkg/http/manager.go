@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	"github.com/RahulRingane/FastVIP/pkg/config"
 )
 
 // Manager manages multiple HTTP services, each with its own set of backends.
@@ -13,8 +15,6 @@ type Manager struct {
 	mu       sync.RWMutex
 	services map[string]*Service
 	servers  map[string]*http.Server
-
-	proxy *Proxy
 
 	listeners map[string]net.Listener
 }
@@ -25,20 +25,35 @@ type Service struct {
 	Listen   string
 	Backends []string
 
+	proxy *Proxy
+
 	next int
 	mu   sync.Mutex
 }
 
-// nextBackend returns the next backend in a round-robin fashion.
-func NewManager() *Manager {
-	transport := NewTransport()
+func NewService(
+	name string,
+	listen string,
+	backends []string,
+	poolConfig config.ConnectionPoolConfig,
+) *Service {
+	transport := NewTransport(poolConfig)
 	proxy := NewProxy(transport)
 
+	return &Service{
+		Name:     name,
+		Listen:   listen,
+		Backends: backends,
+		proxy:    proxy,
+	}
+}
+
+// nextBackend returns the next backend in a round-robin fashion.
+func NewManager() *Manager {
 	return &Manager{
 		services:  make(map[string]*Service),
 		servers:   make(map[string]*http.Server),
 		listeners: make(map[string]net.Listener),
-		proxy:     proxy,
 	}
 }
 
@@ -82,8 +97,7 @@ func (m *Manager) StartService(name string) error {
 		return fmt.Errorf("service %q not found", name)
 	}
 
-	// HTTP request handling is implemented in handler.go.
-	handler := newHandler(service, m.proxy)
+	handler := newHandler(service, service.proxy)
 
 	server := &http.Server{
 		Addr:    service.Listen,
@@ -117,29 +131,6 @@ func (m *Manager) StartService(name string) error {
 			)
 		}
 	}()
-
-	return nil
-}
-
-// StopService stops the HTTP service with the given name. It closes the server and removes it from the manager's records.
-func (m *Manager) StopService(name string) error {
-	m.mu.Lock()
-
-	server, exists := m.servers[name]
-	if exists {
-		delete(m.servers, name)
-		delete(m.listeners, name)
-	}
-
-	m.mu.Unlock()
-
-	if !exists {
-		return fmt.Errorf("service %q is not running", name)
-	}
-
-	if err := server.Close(); err != nil {
-		return fmt.Errorf("stop service %q: %w", name, err)
-	}
 
 	return nil
 }

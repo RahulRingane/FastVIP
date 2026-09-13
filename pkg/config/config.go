@@ -139,18 +139,25 @@ func (g GlobalConfig) GetMetricsPath() string {
 	return g.MetricsPath
 }
 
-// ServiceConfig defines a virtual service with its backends and health check settings.
 type ServiceConfig struct {
-	Name        string            `yaml:"name" mapstructure:"name"`
-	Mode        string            `yaml:"mode" mapstructure:"mode"`
-	Listen      string            `yaml:"listen" mapstructure:"listen"`
-	Protocol    string            `yaml:"protocol" mapstructure:"protocol"`
-	Scheduler   string            `yaml:"scheduler" mapstructure:"scheduler"`
-	SnatIP      string            `yaml:"snat_ip" mapstructure:"snat_ip"`
-	Backends    []BackendConfig   `yaml:"backends" mapstructure:"backends"`
-	HealthCheck HealthCheckConfig `yaml:"health_check" mapstructure:"health_check"`
-	FullNAT     bool              `yaml:"full_nat" mapstructure:"full_nat"`
-	TrafficLog  *bool             `yaml:"traffic_log" mapstructure:"traffic_log"`
+	Name           string                `yaml:"name" mapstructure:"name"`
+	Mode           string                `yaml:"mode" mapstructure:"mode"`
+	Listen         string                `yaml:"listen" mapstructure:"listen"`
+	Protocol       string                `yaml:"protocol" mapstructure:"protocol"`
+	Scheduler      string                `yaml:"scheduler" mapstructure:"scheduler"`
+	SnatIP         string                `yaml:"snat_ip" mapstructure:"snat_ip"`
+	Backends       []BackendConfig       `yaml:"backends" mapstructure:"backends"`
+	HealthCheck    HealthCheckConfig     `yaml:"health_check" mapstructure:"health_check"`
+	FullNAT        bool                  `yaml:"full_nat" mapstructure:"full_nat"`
+	TrafficLog     *bool                 `yaml:"traffic_log" mapstructure:"traffic_log"`
+	ConnectionPool *ConnectionPoolConfig `yaml:"connection_pool" mapstructure:"connection_pool"`
+}
+
+// ConnectionPoolConfig defines connection pooling parameters for a service.
+type ConnectionPoolConfig struct {
+	MaxIdle         int           `yaml:"max_idle" mapstructure:"max_idle"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout" mapstructure:"idle_timeout"`
+	CleanupInterval time.Duration `yaml:"cleanup_interval" mapstructure:"cleanup_interval"`
 }
 
 // HealthCheckConfig defines per-service health check parameters.
