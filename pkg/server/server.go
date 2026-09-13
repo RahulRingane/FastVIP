@@ -285,18 +285,25 @@ func (s *Server) syncHTTPServices(cfg *config.Config) error {
 			continue
 		}
 
-		service := &httpmanager.Service{
-			Name:     svc.Name,
-			Listen:   svc.Listen,
-			Backends: make([]string, 0, len(svc.Backends)),
-		}
-
-		for _, backend := range svc.Backends {
-			service.Backends = append(
-				service.Backends,
-				backend.Address,
+		if svc.ConnectionPool == nil {
+			return fmt.Errorf(
+				"connection_pool configuration required for HTTP service %q",
+				svc.Name,
 			)
 		}
+
+		backends := make([]string, 0, len(svc.Backends))
+
+		for _, backend := range svc.Backends {
+			backends = append(backends, backend.Address)
+		}
+
+		service := httpmanager.NewService(
+			svc.Name,
+			svc.Listen,
+			backends,
+			*svc.ConnectionPool,
+		)
 
 		if err := s.httpMgr.AddService(service); err != nil {
 			return err

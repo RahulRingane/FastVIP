@@ -24,6 +24,7 @@ type connPool struct {
 	cleanupInterval time.Duration
 	stopCh          chan struct{}
 	wg              sync.WaitGroup
+	closeOnce       sync.Once
 }
 
 func newConnPool(
@@ -57,37 +58,37 @@ func (p *connPool) get(backend string) *pooledConn {
 		return nil
 	}
 
-	for len(conns) > 0 {
-		conn := conns[len(conns)-1]
-		conns = conns[:len(conns)-1]
+	conn := conns[len(conns)-1]
+	conns = conns[:len(conns)-1]
 
-		if time.Since(conn.idleTime) > p.idleTimeout {
-			conn.conn.Close()
-			continue
-		}
-
+	if len(conns) == 0 {
+		delete(p.idle, backend)
+	} else {
 		p.idle[backend] = conns
-		return &conn
 	}
 
-	p.idle[backend] = conns
-	return nil
+	return &conn
 }
 
 // put returns a connection to the pool for reuse.
 func (p *connPool) put(backend string, conn pooledConn) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	if conn.conn == nil {
+		return
+	}
 
-	if len(p.idle[backend]) >= p.maxIdle {
-		// If the pool is full, close the connection instead of adding it back to the pool.
+	p.mu.Lock()
+
+	if p.maxIdle <= 0 || len(p.idle[backend]) >= p.maxIdle {
+		p.mu.Unlock()
+
 		conn.conn.Close()
 		return
 	}
 
 	conn.idleTime = time.Now()
-
 	p.idle[backend] = append(p.idle[backend], conn)
+
+	p.mu.Unlock()
 }
 
 func (p *connPool) discard(conn *pooledConn) {
@@ -115,22 +116,21 @@ func (p *connPool) cleanupLoop() {
 
 func (p *connPool) cleanup() {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	now := time.Now()
+	var expired []pooledConn
 
 	for backend, conns := range p.idle {
 		kept := make([]pooledConn, 0, len(conns))
 
 		for _, conn := range conns {
 			if now.Sub(conn.idleTime) > p.idleTimeout {
-
 				log.Printf(
 					"closing idle backend connection: backend=%s",
 					backend,
 				)
 
-				conn.conn.Close()
+				expired = append(expired, conn)
 				continue
 			}
 
@@ -143,21 +143,35 @@ func (p *connPool) cleanup() {
 			p.idle[backend] = kept
 		}
 	}
+
+	p.mu.Unlock()
+
+	// Close connections outside the mutex.
+	for _, conn := range expired {
+		conn.conn.Close()
+	}
 }
 
+// Close closes the connection pool and all its connections.
 func (p *connPool) Close() {
-	close(p.stopCh)
+	p.closeOnce.Do(func() {
+		close(p.stopCh)
+		p.wg.Wait()
 
-	p.wg.Wait()
+		p.mu.Lock()
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
+		var connsToClose []pooledConn
 
-	for backend, conns := range p.idle {
-		for _, conn := range conns {
-			conn.conn.Close()
+		for backend, conns := range p.idle {
+			connsToClose = append(connsToClose, conns...)
+			delete(p.idle, backend)
 		}
 
-		delete(p.idle, backend)
-	}
+		p.mu.Unlock()
+
+		// Close connections outside the mutex.
+		for _, conn := range connsToClose {
+			conn.conn.Close()
+		}
+	})
 }
