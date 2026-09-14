@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/RahulRingane/FastVIP/pkg/config"
 )
@@ -57,7 +59,9 @@ func NewManager() *Manager {
 	}
 }
 
-// nextBackend returns the next backend in a round-robin fashion.
+// AddService adds a new service to the manager. It returns an error if the service is nil
+// has no name, has no listen address, or has no backends.
+// It also returns an error if a service with the same name already exists.
 func (m *Manager) AddService(service *Service) error {
 	if service == nil {
 		return fmt.Errorf("service is nil")
@@ -135,7 +139,8 @@ func (m *Manager) StartService(name string) error {
 	return nil
 }
 
-// RemoveService removes the service with the given name from the manager. It returns an error if the service is still running or does not exist.
+// RemoveService removes the service with the given name from the manager.
+// It returns an error if the service is still running or does not exist.
 func (m *Manager) RemoveService(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -153,7 +158,8 @@ func (m *Manager) RemoveService(name string) error {
 	return nil
 }
 
-// ServiceAddr returns the listening address of the service with the given name. It returns an error if the service is not running or does not exist.
+// ServiceAddr returns the listening address of the service with the given name.
+// It returns an error if the service is not running or does not exist.
 func (m *Manager) ServiceAddr(name string) (string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -167,17 +173,38 @@ func (m *Manager) ServiceAddr(name string) (string, error) {
 }
 
 // StopService stops the HTTP service with the given name.
+// It gracefully shuts down the server and removes it from the manager.
+// If we exceeded 10 seconds, we forcefully close the server.
+// It returns an error if the service is not running or does not exist.
 func (m *Manager) StopService(name string) error {
-	m.mu.Lock()
+	m.mu.RLock()
 	server, exists := m.servers[name]
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	if !exists {
 		return fmt.Errorf("service %q is not running", name)
 	}
 
-	if err := server.Close(); err != nil {
-		return fmt.Errorf("failed to stop HTTP service %q: %w", name, err)
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf(
+			"graceful shutdown timed out for HTTP service %q: %v",
+			name,
+			err,
+		)
+
+		if closeErr := server.Close(); closeErr != nil {
+			return fmt.Errorf(
+				"failed to force stop HTTP service %q: %w",
+				name,
+				closeErr,
+			)
+		}
 	}
 
 	m.mu.Lock()
