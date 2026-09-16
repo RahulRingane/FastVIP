@@ -33,6 +33,7 @@ type Service struct {
 	mu   sync.Mutex
 }
 
+// nextBackend returns the next backend in a round-robin fashion.
 func NewService(
 	name string,
 	listen string,
