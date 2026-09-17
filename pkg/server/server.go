@@ -279,12 +279,15 @@ func (s *Server) shutdown() {
 	s.logger.Info("server stopped")
 }
 
+// syncHTTPServices extracts, initializes, and starts all HTTP-mode services from the configuration.
 func (s *Server) syncHTTPServices(cfg *config.Config) error {
 	for _, svc := range cfg.Services {
+		// Skip non-HTTP services (e.g., L4 TCP/UDP)
 		if svc.Mode != "http" {
 			continue
 		}
 
+		// Connection pooling is required for HTTP L7 management
 		if svc.ConnectionPool == nil {
 			return fmt.Errorf(
 				"connection_pool configuration required for HTTP service %q",
@@ -292,12 +295,13 @@ func (s *Server) syncHTTPServices(cfg *config.Config) error {
 			)
 		}
 
+		// Collect backend addresses for the HTTP service
 		backends := make([]string, 0, len(svc.Backends))
-
 		for _, backend := range svc.Backends {
 			backends = append(backends, backend.Address)
 		}
 
+		// Instantiate and register the service with the HTTP manager
 		service := httpmanager.NewService(
 			svc.Name,
 			svc.Listen,
@@ -309,6 +313,7 @@ func (s *Server) syncHTTPServices(cfg *config.Config) error {
 			return err
 		}
 
+		// Start listening and proxying traffic for the service
 		if err := s.httpMgr.StartService(service.Name); err != nil {
 			return err
 		}

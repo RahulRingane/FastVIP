@@ -139,6 +139,8 @@ func (g GlobalConfig) GetMetricsPath() string {
 	return g.MetricsPath
 }
 
+// ServiceConfig defines the frontend Virtual IP (VIP), forwarding mode (e.g., L4/L7),
+// and associated backend targets for load balancing.
 type ServiceConfig struct {
 	Name           string                `yaml:"name" mapstructure:"name"`
 	Mode           string                `yaml:"mode" mapstructure:"mode"`
