@@ -22,6 +22,7 @@ type Transport struct {
 	pool        *connPool
 }
 
+// NewTransport creates a new Transport with the specified connection pool configuration.
 func NewTransport(poolConfig config.ConnectionPoolConfig) *Transport {
 	return &Transport{
 		dialTimeout: 10 * time.Second,
@@ -74,6 +75,7 @@ func (c *connBody) Close() error {
 	return nil
 }
 
+// RoundTrip executes a single HTTP transaction, returning a Response for the provided Request and backend address.
 func (t *Transport) RoundTrip(
 	r *http.Request,
 	backend string,
@@ -139,6 +141,7 @@ func (t *Transport) RoundTrip(
 	return nil, err
 }
 
+// roundTripConn performs the actual HTTP request and response handling over the provided pooled connection.
 func (t *Transport) roundTripConn(
 	r *http.Request,
 	backend string,
@@ -179,6 +182,7 @@ func (t *Transport) roundTripConn(
 	return resp, nil
 }
 
+// Close closes the Transport and its underlying connection pool, releasing any resources held by the pool.
 func (t *Transport) Close() {
 	if t.pool != nil {
 		t.pool.Close()
