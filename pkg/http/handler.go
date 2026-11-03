@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+// ServeHTTP handles incoming HTTP requests for the given service by proxying them to its backends using the provided proxy.
 // newHandler creates an HTTP handler for the given service that proxies requests to its backends using the provided proxy.
 func newHandler(service *Service, proxy *Proxy) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
