@@ -11,7 +11,7 @@ func newHandler(service *Service, proxy *Proxy) http.Handler {
 		backend := service.nextBackend()
 
 		if backend == "" {
-			http.Error(w, "no backend available", http.StatusServiceUnavailable)
+			http.Error(w, "no backend available at this moment", http.StatusServiceUnavailable)
 			return
 		}
 
@@ -19,4 +19,5 @@ func newHandler(service *Service, proxy *Proxy) http.Handler {
 
 		proxy.ServeHTTP(w, r, backend)
 	})
+
 }
